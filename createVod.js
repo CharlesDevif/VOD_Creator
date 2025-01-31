@@ -13,6 +13,10 @@ const {
   mixVoiceAndMusic,
   checkAndResizeVideo,
   deleteFiles,
+  generateSubtitles,
+  correctSubtitles,
+  convertSrtToAss,
+  addStyledSubtitlesToVideo 
 } = require('./utils');
 
 /**
@@ -24,7 +28,7 @@ const {
  * @param {string} baseDir    - Dossier de base où se trouvent "vod", "audio/voice", "audio/music", "output"
  * @returns {Promise<string>}   - Chemin de la vidéo finale
  */
-async function createFinalVod(videoUrl, voiceFile, baseDir) {
+async function createFinalVod(videoUrl, voiceFile, baseDir, scriptPath) {
   const vodDir = path.join(baseDir, 'vod');
   const voiceDir = path.join(baseDir, 'audio', 'voice');
   const musicDir = path.join(baseDir, 'audio', 'music');
@@ -46,13 +50,6 @@ async function createFinalVod(videoUrl, voiceFile, baseDir) {
     getFileDuration(finalRatioVideoPath),
   ]);
 
-  if (voiceDuration > videoDuration) {
-    deleteFiles([videoPath,resizedVideoPath]);
-    throw new Error(
-      `La vidéo (${videoDuration.toFixed(2)}s) est plus courte que la voix (${voiceDuration.toFixed(2)}s).`
-    );
-  }
-
   const randomMusicPath = getRandomMusicFile(musicDir);
   const mixedAudioName = `mixed_${path.basename(voiceFile, path.extname(voiceFile))}.m4a`;
   const mixedAudioPath = path.join(outputDir, mixedAudioName);
@@ -64,10 +61,24 @@ async function createFinalVod(videoUrl, voiceFile, baseDir) {
   const finalVideoPath = path.join(outputDir, `final_${path.basename(finalRatioVideoPath)}`);
   await mergeAudioWithVideo(cutVideoPath, mixedAudioPath, finalVideoPath);
 
-  // Suppression des fichiers inutiles
-  deleteFiles([videoPath, resizedVideoPath, cutVideoPath, mixedAudioPath]);
+  // Génération des sous-titres avec Whisper
+  const subtitlePath = await generateSubtitles(mixedAudioPath, outputDir);
 
-  return finalVideoPath;
+  // Correction des sous-titres avec le script original
+  const correctedSubtitlePath = await correctSubtitles(subtitlePath, scriptPath, outputDir);
+
+  // Conversion en sous-titres stylisés ASS
+  const styledSubtitlePath = await convertSrtToAss(correctedSubtitlePath, outputDir);
+
+  // Ajout des sous-titres à la vidéo
+  const videoWithSubtitlesPath = path.join(outputDir, `final_with_subs_${path.basename(finalVideoPath)}`);
+  await addStyledSubtitlesToVideo(finalVideoPath, styledSubtitlePath, videoWithSubtitlesPath);
+
+  // Suppression des fichiers inutiles
+  deleteFiles([videoPath, resizedVideoPath, cutVideoPath, mixedAudioPath, finalVideoPath]);
+
+  return videoWithSubtitlesPath;
 }
+
 
 module.exports = { createFinalVod };

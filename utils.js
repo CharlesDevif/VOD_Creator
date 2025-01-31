@@ -9,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const cliProgress = require('cli-progress');
+const { exec } = require('child_process');
+
 
 /**
  * Vérifie si les dossiers existent, sinon les crée.
@@ -264,6 +266,237 @@ const deleteFiles = (filePaths) => {
   });
 };
 
+/**
+ * Transcrit l’audio en sous-titres `.srt` avec Whisper
+ * @param {string} audioPath - Chemin du fichier audio.
+ * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`
+ * @returns {Promise<string>} - Chemin du fichier `.srt` généré
+ */
+const generateSubtitles = (audioPath, outputDir) => {
+  return new Promise((resolve, reject) => {
+    const subtitlePath = path.join(outputDir, `${path.basename(audioPath, path.extname(audioPath))}.srt`);
+    
+    console.log('Transcription de l’audio avec Whisper...');
+
+    // Exécution de Whisper
+    exec(`whisper "${audioPath}" --model medium --language fr --output_format srt --output_dir "${outputDir}"`, 
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Erreur Whisper : ${stderr}`);
+          return reject(error);
+        }
+        console.log(`Sous-titres générés : ${subtitlePath}`);
+        resolve(subtitlePath);
+      }
+    );
+  });
+};
+
+/**
+ * Corrige les sous-titres `.srt` en les alignant avec le script original
+ * @param {string} srtPath - Chemin du fichier `.srt` généré par Whisper
+ * @param {string} scriptPath - Chemin du fichier contenant le script original
+ * @param {string} outputDir - Dossier de sortie pour le fichier `.srt` corrigé
+ * @returns {Promise<string>} - Chemin du fichier `.srt` corrigé
+ */
+const correctSubtitles = (srtPath, scriptPath, outputDir) => {
+  return new Promise((resolve, reject) => {
+    const correctedSrtPath = path.join(outputDir, 'corrected.srt');
+
+    fs.readFile(srtPath, 'utf8', (err, srtData) => {
+      if (err) return reject(err);
+
+      fs.readFile(scriptPath, 'utf8', (err, scriptData) => {
+        if (err) return reject(err);
+
+        const scriptSentences = scriptData.split('. ');
+        const srtLines = srtData.split('\n');
+
+        let correctedSrt = '';
+        let scriptIndex = 0;
+
+        for (let i = 0; i < srtLines.length; i++) {
+          if (srtLines[i].includes('-->')) {
+            correctedSrt += srtLines[i] + '\n'; // Garder le timing original
+          } else if (srtLines[i].trim() && !srtLines[i].match(/^\d+$/)) {
+            // Remplacer le texte du sous-titre par le script correct
+            if (scriptIndex < scriptSentences.length) {
+              correctedSrt += scriptSentences[scriptIndex].trim() + '\n';
+              scriptIndex++;
+            }
+          } else {
+            correctedSrt += srtLines[i] + '\n';
+          }
+        }
+
+        fs.writeFile(correctedSrtPath, correctedSrt, 'utf8', (err) => {
+          if (err) return reject(err);
+          console.log(`✅ Sous-titres corrigés générés : ${correctedSrtPath}`);
+          resolve(correctedSrtPath);
+        });
+      });
+    });
+  });
+};
+
+const convertSrtToAss = (srtPath, outputDir) => {
+  return new Promise((resolve, reject) => {
+    const assPath = path.join(outputDir, `${path.basename(srtPath, '.srt')}.ass`);
+
+    // En-tête du fichier ASS avec un style propre pour TikTok
+    const assHeader = `[Script Info]
+    Title: Sous-titres TikTok
+    ScriptType: v4.00+
+    Collisions: Normal
+    PlayDepth: 0
+    Timer: 100.0000
+    
+    [V4+ Styles]
+    ; Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+    Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+    Style: TikTokStyle,Montserrat,12,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,2,2,20,20,30,1
+    
+    [Events]
+    Format: Layer, Start, End, Style, MarginL, MarginR, MarginV, Effect, Text
+    `;
+    
+
+    // Convertit une chaîne de temps SRT ("HH:MM:SS,mmm") en secondes
+    function timeStringToSeconds(timeString) {
+      const regex = /(\d+):(\d+):(\d+),(\d+)/;
+      const match = timeString.match(regex);
+      if (!match) return 0;
+      const hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const seconds = parseInt(match[3], 10);
+      const milliseconds = parseInt(match[4], 10);
+      return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+    }
+
+    // Convertit des secondes en format ASS ("H:MM:SS.cs")
+    function secondsToAssTime(totalSeconds) {
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      // On formate les secondes avec deux décimales et on s'assure d'avoir toujours 2 chiffres pour les minutes
+      const secondsStr = seconds.toFixed(2).padStart(5, '0'); // ex. "05.50"
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${secondsStr}`;
+    }
+
+    fs.readFile(srtPath, 'utf8', (err, data) => {
+      if (err) return reject(err);
+
+      const lines = data.split('\n');
+      let assBody = '';
+      let startTimeSeconds = 0;
+      let endTimeSeconds = 0;
+      let textBuffer = '';
+      let lastEndTime = 0; // Pour éviter que les sous-titres se chevauchent
+
+      lines.forEach((line) => {
+        if (line.match(/^\d+$/)) {
+          // Ignorer les numéros de sous-titres
+          return;
+        } else if (line.includes('-->')) {
+          // Extraction des timestamps et conversion en secondes
+          const times = line.split('-->');
+          startTimeSeconds = timeStringToSeconds(times[0].trim());
+          endTimeSeconds = timeStringToSeconds(times[1].trim());
+        } else if (line.trim()) {
+          // Accumuler le texte du sous-titre
+          textBuffer += line.trim() + ' ';
+        } else {
+          // Ligne vide : on traite le bloc accumulé
+          if (textBuffer) {
+            const words = textBuffer.trim().split(' ');
+            const chunkSize = 4; // Nombre de mots par bloc
+            const totalDuration = endTimeSeconds - startTimeSeconds;
+            const timePerWord = totalDuration / words.length;
+
+            for (let i = 0; i < words.length; i += chunkSize) {
+              const chunkWords = words.slice(i, i + chunkSize).join(' ');
+              let chunkStart = startTimeSeconds + i * timePerWord;
+              let chunkEnd = startTimeSeconds + Math.min(i + chunkSize, words.length) * timePerWord;
+
+              // Correction pour éviter que le début ne soit antérieur à la fin du bloc précédent
+              if (chunkStart < lastEndTime) {
+                chunkStart = lastEndTime;
+              }
+              if (chunkEnd > endTimeSeconds) {
+                chunkEnd = endTimeSeconds;
+              }
+
+              const chunkStartStr = secondsToAssTime(chunkStart);
+              const chunkEndStr = secondsToAssTime(chunkEnd);
+
+              assBody += `Dialogue: 0,${chunkStartStr},${chunkEndStr},TikTokStyle,0,0,0,,{\\fad(200,200)} ${chunkWords}\n`;
+              lastEndTime = chunkEnd;
+            }
+            textBuffer = '';
+          }
+        }
+      });
+
+      // Traitement du dernier bloc s'il n'est pas suivi d'une ligne vide
+      if (textBuffer) {
+        const words = textBuffer.trim().split(' ');
+        const chunkSize = 4;
+        const totalDuration = endTimeSeconds - startTimeSeconds;
+        const timePerWord = totalDuration / words.length;
+
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunkWords = words.slice(i, i + chunkSize).join(' ');
+          let chunkStart = startTimeSeconds + i * timePerWord;
+          let chunkEnd = startTimeSeconds + Math.min(i + chunkSize, words.length) * timePerWord;
+          if (chunkStart < lastEndTime) {
+            chunkStart = lastEndTime;
+          }
+          if (chunkEnd > endTimeSeconds) {
+            chunkEnd = endTimeSeconds;
+          }
+          const chunkStartStr = secondsToAssTime(chunkStart);
+          const chunkEndStr = secondsToAssTime(chunkEnd);
+          assBody += `Dialogue: 0,${chunkStartStr},${chunkEndStr},TikTokStyle,0,0,0,,{\\fad(200,200)} ${chunkWords}\n`;
+          lastEndTime = chunkEnd;
+        }
+      }
+
+      // Écriture du fichier ASS final
+      fs.writeFile(assPath, assHeader + '\n' + assBody, 'utf8', (err) => {
+        if (err) return reject(err);
+        console.log(`✅ Sous-titres stylisés générés : ${assPath}`);
+        resolve(assPath);
+      });
+    });
+  });
+};
+
+
+
+
+/**
+ * Ajoute des sous-titres à une vidéo.
+ * @param {string} videoPath - Chemin du fichier vidéo.
+ * @param {string} subtitlePath - Chemin du fichier sous-titres (.srt).
+ * @param {string} outputPath - Chemin du fichier final.
+ * @returns {Promise<void>}
+ */
+const addStyledSubtitlesToVideo = (videoPath, subtitlePath, outputPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg(videoPath)
+      .outputOptions(`-vf ass=${subtitlePath}`)
+      .on('end', () => {
+        console.log('Sous-titres stylisés ajoutés à la vidéo.');
+        resolve();
+      })
+      .on('error', (err) => {
+        console.error('Erreur lors de l’ajout des sous-titres stylisés :', err.message);
+        reject(err);
+      })
+      .save(outputPath);
+  });
+};
+
 
 
 // On exporte toutes les fonctions utilitaires
@@ -277,4 +510,8 @@ module.exports = {
   mixVoiceAndMusic,
   checkAndResizeVideo,
   deleteFiles,
+  generateSubtitles,
+  correctSubtitles,
+  convertSrtToAss,
+  addStyledSubtitlesToVideo,
 };

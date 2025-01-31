@@ -4,21 +4,31 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 const { createFinalVod } = require('./createVod');
 
 // Arguments
 const videoUrl = process.argv[2];
 const voiceFile = process.argv[3];
+const scriptText = process.argv.slice(4).join(' '); // Récupérer le script complet depuis la CLI
 
 // Chemin de base (dossiers 'vod', 'audio/voice', etc. doivent être dans ce répertoire)
 const baseDir = __dirname;
 
 (async () => {
   try {
-    const finalPath = await createFinalVod(videoUrl, voiceFile, baseDir);
-    console.log('VOD finale créée avec succès :', finalPath);
+    if (!videoUrl || !voiceFile || !scriptText) {
+      throw new Error('Usage: node index.js <video_url> <voice_file> "<script_text>"');
+    }
+
+    // Sauvegarder le script original dans un fichier temporaire
+    const scriptPath = path.join(baseDir, 'script_original.txt');
+    fs.writeFileSync(scriptPath, scriptText, 'utf8');
+
+    const finalPath = await createFinalVod(videoUrl, voiceFile, baseDir, scriptPath);
+    console.log('✅ VOD finale créée avec succès :', finalPath);
   } catch (err) {
-    console.error('Erreur :', err.message);
+    console.error('❌ Erreur :', err.message);
     process.exit(1);
   }
 })();
