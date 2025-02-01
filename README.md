@@ -107,15 +107,6 @@ Voici la structure des dossiers utilisée par le projet :
 
 ---
 
-## 📌 Améliorations futures
-
-- Ajouter un système de configuration pour personnaliser les ratios, volumes et formats.
-- Implémenter un système de logs détaillés pour le débogage.
-- Support de multiples formats de sortie (ex. : `.avi`, `.mov`, etc.).
-- Intégration avec des API pour uploader directement sur des plateformes (ex. : TikTok, Instagram).
-
----
-
 ## 🤝 Contribuer
 
 1. Forkez ce dépôt.

@@ -22,7 +22,7 @@ const baseDir = __dirname;
     }
 
     // Sauvegarder le script original dans un fichier temporaire
-    const scriptPath = path.join(baseDir, 'script_original.txt');
+    const scriptPath = path.join(baseDir, 'text/script_original.txt');
     fs.writeFileSync(scriptPath, scriptText, 'utf8');
 
     const finalPath = await createFinalVod(videoUrl, voiceFile, baseDir, scriptPath);

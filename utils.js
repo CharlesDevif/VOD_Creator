@@ -267,6 +267,26 @@ const deleteFiles = (filePaths) => {
 };
 
 /**
+ * Supprime tous les fichiers dans un répertoire.
+ * @param {string} directory - Le chemin du dossier à nettoyer.
+ * @param {Array<string>} exceptions - Liste de chemins de fichiers à ne pas supprimer.
+ */
+function cleanDirectory(directory, exceptions = []) {
+  const files = fs.readdirSync(directory);
+  files.forEach(file => {
+    const filePath = path.join(directory, file);
+    if (!exceptions.includes(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        console.log(`Fichier supprimé : ${filePath}`);
+      } catch (err) {
+        console.error(`Erreur lors de la suppression du fichier ${filePath} : ${err.message}`);
+      }
+    }
+  });
+}
+
+/**
  * Transcrit l’audio en sous-titres `.srt` avec Whisper
  * @param {string} audioPath - Chemin du fichier audio.
  * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`
@@ -343,23 +363,22 @@ const convertSrtToAss = (srtPath, outputDir) => {
   return new Promise((resolve, reject) => {
     const assPath = path.join(outputDir, `${path.basename(srtPath, '.srt')}.ass`);
 
-    // En-tête du fichier ASS avec un style propre pour TikTok
+    // En-tête du fichier ASS avec un style adapté (n'hésitez pas à ajuster Fontsize et MarginV)
     const assHeader = `[Script Info]
-    Title: Sous-titres TikTok
-    ScriptType: v4.00+
-    Collisions: Normal
-    PlayDepth: 0
-    Timer: 100.0000
-    
-    [V4+ Styles]
-    ; Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-    Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-    Style: TikTokStyle,Montserrat,12,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,2,2,20,20,30,1
-    
-    [Events]
-    Format: Layer, Start, End, Style, MarginL, MarginR, MarginV, Effect, Text
-    `;
-    
+Title: Sous-titres TikTok
+ScriptType: v4.00+
+Collisions: Normal
+PlayDepth: 0
+Timer: 100.0000
+
+[V4+ Styles]
+; Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: TikTokStyle,Montserrat,12,&H00FFFFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,2,2,2,20,20,50,1
+
+[Events]
+Format: Layer, Start, End, Style, MarginL, MarginR, MarginV, Effect, Text
+`;
 
     // Convertit une chaîne de temps SRT ("HH:MM:SS,mmm") en secondes
     function timeStringToSeconds(timeString) {
@@ -378,8 +397,7 @@ const convertSrtToAss = (srtPath, outputDir) => {
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
       const seconds = totalSeconds % 60;
-      // On formate les secondes avec deux décimales et on s'assure d'avoir toujours 2 chiffres pour les minutes
-      const secondsStr = seconds.toFixed(2).padStart(5, '0'); // ex. "05.50"
+      const secondsStr = seconds.toFixed(2).padStart(5, '0'); // ex: "05.50"
       return `${hours}:${minutes.toString().padStart(2, '0')}:${secondsStr}`;
     }
 
@@ -391,13 +409,48 @@ const convertSrtToAss = (srtPath, outputDir) => {
       let startTimeSeconds = 0;
       let endTimeSeconds = 0;
       let textBuffer = '';
-      let lastEndTime = 0; // Pour éviter que les sous-titres se chevauchent
+      let lastEndTime = 0; // Pour éviter que les sous-titres se chevauchent dans le même bloc
+
+      // Fonction pour traiter un bloc de texte accumulé
+      function processBlock() {
+        if (!textBuffer) return;
+        const words = textBuffer.trim().split(' ');
+        const chunkSize = 4; // Nombre de mots par bloc
+        const totalDuration = endTimeSeconds - startTimeSeconds;
+        const timePerWord = totalDuration / words.length;
+
+        for (let i = 0; i < words.length; i += chunkSize) {
+          const chunkWords = words.slice(i, i + chunkSize).join(' ');
+          let chunkStart = startTimeSeconds + i * timePerWord;
+          let chunkEnd = startTimeSeconds + Math.min(i + chunkSize, words.length) * timePerWord;
+
+          // Pour le même bloc, éviter le chevauchement interne
+          if (chunkStart < lastEndTime) {
+            chunkStart = lastEndTime;
+          }
+          if (chunkEnd > endTimeSeconds) {
+            chunkEnd = endTimeSeconds;
+          }
+
+          const chunkStartStr = secondsToAssTime(chunkStart);
+          const chunkEndStr = secondsToAssTime(chunkEnd);
+
+          assBody += `Dialogue: 0,${chunkStartStr},${chunkEndStr},TikTokStyle,0,0,0,,{\\fad(200,200)} ${chunkWords}\n`;
+          lastEndTime = chunkEnd;
+        }
+        // Réinitialiser pour le prochain bloc
+        textBuffer = '';
+        lastEndTime = 0;
+      }
 
       lines.forEach((line) => {
         if (line.match(/^\d+$/)) {
-          // Ignorer les numéros de sous-titres
+          // Ignore les numéros de sous-titres
           return;
         } else if (line.includes('-->')) {
+          // Si un bloc précédent avait du texte accumulé, le traiter avant de passer au suivant
+          processBlock();
+
           // Extraction des timestamps et conversion en secondes
           const times = line.split('-->');
           startTimeSeconds = timeStringToSeconds(times[0].trim());
@@ -406,60 +459,13 @@ const convertSrtToAss = (srtPath, outputDir) => {
           // Accumuler le texte du sous-titre
           textBuffer += line.trim() + ' ';
         } else {
-          // Ligne vide : on traite le bloc accumulé
-          if (textBuffer) {
-            const words = textBuffer.trim().split(' ');
-            const chunkSize = 4; // Nombre de mots par bloc
-            const totalDuration = endTimeSeconds - startTimeSeconds;
-            const timePerWord = totalDuration / words.length;
-
-            for (let i = 0; i < words.length; i += chunkSize) {
-              const chunkWords = words.slice(i, i + chunkSize).join(' ');
-              let chunkStart = startTimeSeconds + i * timePerWord;
-              let chunkEnd = startTimeSeconds + Math.min(i + chunkSize, words.length) * timePerWord;
-
-              // Correction pour éviter que le début ne soit antérieur à la fin du bloc précédent
-              if (chunkStart < lastEndTime) {
-                chunkStart = lastEndTime;
-              }
-              if (chunkEnd > endTimeSeconds) {
-                chunkEnd = endTimeSeconds;
-              }
-
-              const chunkStartStr = secondsToAssTime(chunkStart);
-              const chunkEndStr = secondsToAssTime(chunkEnd);
-
-              assBody += `Dialogue: 0,${chunkStartStr},${chunkEndStr},TikTokStyle,0,0,0,,{\\fad(200,200)} ${chunkWords}\n`;
-              lastEndTime = chunkEnd;
-            }
-            textBuffer = '';
-          }
+          // Ligne vide : fin du bloc, traiter le texte accumulé
+          processBlock();
         }
       });
 
-      // Traitement du dernier bloc s'il n'est pas suivi d'une ligne vide
-      if (textBuffer) {
-        const words = textBuffer.trim().split(' ');
-        const chunkSize = 4;
-        const totalDuration = endTimeSeconds - startTimeSeconds;
-        const timePerWord = totalDuration / words.length;
-
-        for (let i = 0; i < words.length; i += chunkSize) {
-          const chunkWords = words.slice(i, i + chunkSize).join(' ');
-          let chunkStart = startTimeSeconds + i * timePerWord;
-          let chunkEnd = startTimeSeconds + Math.min(i + chunkSize, words.length) * timePerWord;
-          if (chunkStart < lastEndTime) {
-            chunkStart = lastEndTime;
-          }
-          if (chunkEnd > endTimeSeconds) {
-            chunkEnd = endTimeSeconds;
-          }
-          const chunkStartStr = secondsToAssTime(chunkStart);
-          const chunkEndStr = secondsToAssTime(chunkEnd);
-          assBody += `Dialogue: 0,${chunkStartStr},${chunkEndStr},TikTokStyle,0,0,0,,{\\fad(200,200)} ${chunkWords}\n`;
-          lastEndTime = chunkEnd;
-        }
-      }
+      // Traiter le dernier bloc s'il n'est pas suivi d'une ligne vide
+      processBlock();
 
       // Écriture du fichier ASS final
       fs.writeFile(assPath, assHeader + '\n' + assBody, 'utf8', (err) => {
@@ -470,6 +476,7 @@ const convertSrtToAss = (srtPath, outputDir) => {
     });
   });
 };
+
 
 
 
@@ -510,6 +517,7 @@ module.exports = {
   mixVoiceAndMusic,
   checkAndResizeVideo,
   deleteFiles,
+  cleanDirectory,
   generateSubtitles,
   correctSubtitles,
   convertSrtToAss,
