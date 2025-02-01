@@ -9,6 +9,13 @@ const path = require('path');
 const ytdl = require('@distube/ytdl-core');
 const cliProgress = require('cli-progress'); // Pour l’affichage de la progression
 
+// Définir des options de requête personnalisées avec un User-Agent imitant un navigateur classique
+const customRequestOptions = {
+  headers: {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+  }
+};
+
 /**
  * Télécharge la vidéo depuis YouTube (sans piste audio).
  * @param {string} url - L’URL de la vidéo YouTube
@@ -28,8 +35,8 @@ const downloadVideoOnly = async (url, outputDir) => {
 
     console.log(`Téléchargement de la vidéo sans audio : ${fileName}...\n`);
 
-    // Récupérer les informations sur la vidéo
-    const info = await ytdl.getInfo(url);
+    // Récupérer les informations sur la vidéo avec les options personnalisées
+    const info = await ytdl.getInfo(url, { requestOptions: customRequestOptions });
     const format = ytdl.chooseFormat(info.formats, {
       quality: 'highestvideo',
       filter: 'videoonly',
@@ -42,9 +49,13 @@ const downloadVideoOnly = async (url, outputDir) => {
 
     let downloadedSize = 0;
 
-    // Télécharger la vidéo avec progression
+    // Télécharger la vidéo avec progression et options personnalisées
     await new Promise((resolve, reject) => {
-      ytdl(url, { quality: 'highestvideo', filter: 'videoonly' })
+      ytdl(url, { 
+          quality: 'highestvideo', 
+          filter: 'videoonly',
+          requestOptions: customRequestOptions 
+        })
         .on('progress', (chunkLength) => {
           downloadedSize += chunkLength;
           progressBar.update(downloadedSize); // Mettre à jour la barre de progression
