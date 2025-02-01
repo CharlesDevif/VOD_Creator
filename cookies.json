@@ -1,0 +1,61 @@
+[
+  {
+    "name": "PREF",
+    "value": "tz=Europe.Paris",
+    "domain": ".youtube.com",
+    "path": "/",
+    "expires": 1772988455.879697,
+    "size": 19,
+    "httpOnly": false,
+    "secure": true,
+    "session": false,
+    "priority": "Medium",
+    "sameParty": false,
+    "sourceScheme": "Secure"
+  },
+  {
+    "name": "VISITOR_PRIVACY_METADATA",
+    "value": "CgJGUhIcEhgSFhMLFBUWFwwYGRobHB0eHw4PIBAREiEgZw%3D%3D",
+    "domain": ".youtube.com",
+    "path": "/",
+    "expires": 1772556454.767637,
+    "size": 76,
+    "httpOnly": true,
+    "secure": true,
+    "session": false,
+    "sameSite": "None",
+    "priority": "Medium",
+    "sameParty": false,
+    "sourceScheme": "Secure"
+  },
+  {
+    "name": "__Secure-YEC",
+    "value": "CgtmSzVFbEpFa2Z4MCimoPm8BjIiCgJGUhIcEhgSFhMLFBUWFwwYGRobHB0eHw4PIBAREiEgZw%3D%3D",
+    "domain": ".youtube.com",
+    "path": "/",
+    "expires": 1772556453.767582,
+    "size": 92,
+    "httpOnly": true,
+    "secure": true,
+    "session": false,
+    "sameSite": "Lax",
+    "priority": "Medium",
+    "sameParty": false,
+    "sourceScheme": "Secure"
+  },
+  {
+    "name": "YSC",
+    "value": "rWWVDa50MzQ",
+    "domain": ".youtube.com",
+    "path": "/",
+    "expires": -1,
+    "size": 14,
+    "httpOnly": true,
+    "secure": true,
+    "session": true,
+    "sameSite": "None",
+    "priority": "Medium",
+    "sameParty": false,
+    "sourceScheme": "Secure"
+  }
+]
