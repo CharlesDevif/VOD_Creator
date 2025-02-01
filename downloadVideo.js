@@ -23,27 +23,29 @@ function cookiesExist() {
  * Récupère les cookies de YouTube via Puppeteer et les enregistre dans `cookies.json`.
  * @returns {Promise<Array>} - Un tableau d'objets cookie.
  */
+const puppeteer = require('puppeteer');
+
 async function getYoutubeCookies() {
-  console.log('🔍 Récupération des cookies depuis YouTube...');
-  
   const browser = await puppeteer.launch({
+    executablePath: '/usr/bin/chromium-browser', // Utilisation de Chromium installé via apk
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: [
+      '--no-sandbox', 
+      '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--disable-software-rasterizer'
+    ],
   });
 
   const page = await browser.newPage();
   await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2' });
 
   const cookies = await page.cookies();
-
   await browser.close();
-
-  // Sauvegarde des cookies dans un fichier JSON
-  fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
-  console.log('✅ Cookies enregistrés dans cookies.json');
-
   return cookies;
 }
+
 
 /**
  * Charge les cookies de YouTube depuis `cookies.json` ou les récupère avec Puppeteer si nécessaire.
