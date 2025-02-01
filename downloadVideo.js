@@ -28,12 +28,15 @@ async function getYoutubeCookies() {
   const browser = await puppeteer.launch({
     executablePath: '/usr/bin/chromium-browser', // Utilisation de Chromium installé via apk
     headless: true,
+    timeout: 0, // Désactiver le timeout pour éviter l'erreur
     args: [
-      '--no-sandbox', 
+      '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-gpu',
       '--disable-dev-shm-usage',
-      '--disable-software-rasterizer'
+      '--disable-software-rasterizer',
+      '--window-size=1920,1080',
+      '--single-process'
     ],
   });
 
