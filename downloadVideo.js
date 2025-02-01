@@ -7,106 +7,43 @@ const fs = require('fs');
 const path = require('path');
 const ytdl = require('@distube/ytdl-core');
 const cliProgress = require('cli-progress');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
 
 const COOKIES_PATH = 'cookies.json';
 
-// Appliquer les plugins pour éviter la détection des bots
-puppeteer.use(StealthPlugin());
-puppeteer.use(AdblockerPlugin({ blockTrackers: true }));
-
 /**
- * Vérifie si le fichier `cookies.json` existe.
- * @returns {boolean} - Retourne `true` si le fichier existe, sinon `false`.
+ * Vérifie si le fichier `cookies.json` existe et est valide.
+ * @returns {boolean} - Retourne `true` si le fichier est correct, sinon `false`.
  */
 function cookiesExist() {
-  return fs.existsSync(COOKIES_PATH);
-}
-
-async function setCookiesFromFile(page) {
-  if (cookiesExist()) {
-    const cookies = JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
-    await page.setCookie(...cookies);
-    console.log('🍪 Cookies chargés dans le navigateur.');
+  try {
+    if (fs.existsSync(COOKIES_PATH)) {
+      JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
+      return true;
+    }
+  } catch (error) {
+    console.error('❌ Erreur : cookies.json est invalide ou corrompu.');
   }
-}
-
-
-/**
- * Récupère les cookies de YouTube via Puppeteer et les enregistre dans `cookies.json`.
- * @returns {Promise<Array>} - Un tableau d'objets cookie.
- */
-async function getYoutubeCookies() {
-  const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser',
-    headless: true,
-    protocolTimeout: 90000,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-gpu',
-      '--disable-software-rasterizer',
-      '--disable-dev-shm-usage',
-      '--disable-features=NetworkService,NetworkServiceInProcess',
-      '--disable-background-networking',
-      '--disable-extensions',
-      '--disable-breakpad',
-      '--disable-sync',
-      '--disable-blink-features=AutomationControlled',
-      '--remote-debugging-port=9222'
-    ],
-  });
-
-  const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 720 });
-
-  // ✅ Réinjecte les cookies existants
-  await setCookiesFromFile(page);
-
-  await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-  });
-
-  await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2' });
-
-  // ✅ Vérifie si YouTube demande une connexion (captcha, login…)
-  if ((await page.url()).includes('consent.youtube.com')) {
-    console.log('⚠️ YouTube demande une validation manuelle. Ouvre la session pour valider.');
-    await page.screenshot({ path: 'captcha.png' });
-    await page.waitForTimeout(10000); // Pause pour intervention manuelle
-  }
-
-  const cookies = await page.cookies();
-  fs.writeFileSync(COOKIES_PATH, JSON.stringify(cookies, null, 2));
-  console.log('✅ Cookies mis à jour.');
-
-  await browser.close();
-  return cookies;
-}
-
-
-/**
- * Charge les cookies de YouTube depuis `cookies.json` ou les récupère avec Puppeteer si nécessaire.
- * @returns {Promise<Array>} - Tableau des cookies.
- */
-async function loadCookies() {
-  if (cookiesExist()) {
-    console.log('📂 Chargement des cookies depuis cookies.json');
-    return JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
-  } else {
-    console.log('🔄 Récupération des cookies via Puppeteer...');
-    return await getYoutubeCookies();
-  }
+  return false;
 }
 
 /**
- * Crée un agent pour ytdl-core en utilisant les cookies récupérés.
- * @returns {Promise<Object>} - L'agent créé par ytdl.createAgent.
+ * Charge les cookies depuis `cookies.json`.
+ * @returns {Array} - Tableau des cookies YouTube.
  */
-async function createYtdlAgent() {
-  const cookies = await loadCookies();
+function loadCookies() {
+  if (!cookiesExist()) {
+    throw new Error('📂 Le fichier cookies.json est introuvable ou invalide. Assurez-vous d’avoir exporté les cookies correctement.');
+  }
+  console.log('📂 Chargement des cookies depuis cookies.json');
+  return JSON.parse(fs.readFileSync(COOKIES_PATH, 'utf8'));
+}
+
+/**
+ * Crée un agent pour `ytdl-core` en utilisant les cookies récupérés.
+ * @returns {Object} - L'agent créé par `ytdl.createAgent`.
+ */
+function createYtdlAgent() {
+  const cookies = loadCookies();
   return ytdl.createAgent(cookies);
 }
 
@@ -125,13 +62,13 @@ const defaultHeaders = {
  */
 const downloadVideoOnly = async (url, outputDir) => {
   try {
-    // Créer l'agent avec cookies récupérés
-    const agent = await createYtdlAgent();
+    // Créer l'agent avec les cookies récupérés
+    const agent = createYtdlAgent();
 
     // Extraire l’ID de la vidéo
     const videoId = new URL(url).searchParams.get('v');
     if (!videoId) {
-      throw new Error('Impossible d’extraire l’ID de la vidéo');
+      throw new Error('❌ Impossible d’extraire l’ID de la vidéo.');
     }
 
     const fileName = `vod_${videoId}_noaudio.mp4`;
@@ -145,6 +82,11 @@ const downloadVideoOnly = async (url, outputDir) => {
       quality: 'highestvideo',
       filter: 'videoonly',
     });
+    
+    if (!format) {
+      throw new Error('❌ Aucun format vidéo disponible.');
+    }
+
     const totalSize = parseInt(format.contentLength, 10) || 0;
 
     // Initialiser la barre de progression
