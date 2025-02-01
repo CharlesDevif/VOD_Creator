@@ -23,7 +23,6 @@ function cookiesExist() {
  * Récupère les cookies de YouTube via Puppeteer et les enregistre dans `cookies.json`.
  * @returns {Promise<Array>} - Un tableau d'objets cookie.
  */
-const puppeteer = require('puppeteer');
 
 async function getYoutubeCookies() {
   const browser = await puppeteer.launch({
