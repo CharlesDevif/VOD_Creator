@@ -21,8 +21,14 @@ const baseDir = __dirname;
       throw new Error('Usage: node index.js <video_url> <voice_file> "<script_text>"');
     }
 
+    // Définir le répertoire 'text' et le créer s'il n'existe pas
+    const textDir = path.join(baseDir, 'text');
+    if (!fs.existsSync(textDir)) {
+      fs.mkdirSync(textDir, { recursive: true });
+    }
+
     // Sauvegarder le script original dans un fichier temporaire
-    const scriptPath = path.join(baseDir, 'text/script_original.txt');
+    const scriptPath = path.join(textDir, 'script_original.txt');
     fs.writeFileSync(scriptPath, scriptText, 'utf8');
 
     const finalPath = await createFinalVod(videoUrl, voiceFile, baseDir, scriptPath);
