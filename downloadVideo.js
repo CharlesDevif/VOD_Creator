@@ -26,56 +26,25 @@ function cookiesExist() {
 
 async function getYoutubeCookies() {
   const browser = await puppeteer.launch({
-    executablePath: '/usr/bin/chromium-browser', // Chemin explicite sous Alpine
+    executablePath: '/usr/bin/chromium-browser',
     headless: true,
+    timeout: 0,
+    protocolTimeout: 60000, // 🔥 Augmente le timeout WebSocket interne
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-gpu',
-      '--disable-dev-shm-usage',
       '--disable-software-rasterizer',
-      '--disable-accelerated-2d-canvas',
+      '--disable-dev-shm-usage',
+      '--disable-features=NetworkService,NetworkServiceInProcess',
       '--disable-background-networking',
-      '--disable-breakpad',
-      '--disable-component-update',
-      '--disable-default-apps',
-      '--disable-domain-reliability',
       '--disable-extensions',
-      '--disable-features=AudioServiceOutOfProcess',
-      '--disable-hang-monitor',
-      '--disable-ipc-flooding-protection',
-      '--disable-notifications',
-      '--disable-offer-store-unmasked-wallet-cards',
-      '--disable-popup-blocking',
-      '--disable-print-preview',
-      '--disable-prompt-on-repost',
-      '--disable-renderer-backgrounding',
-      '--disable-setuid-sandbox',
-      '--disable-speech-api',
+      '--disable-breakpad',
       '--disable-sync',
-      '--disable-translate',
-      '--disable-wake-on-wifi',
-      '--disable-web-security',
-      '--disk-cache-dir=/dev/null',
-      '--enable-automation',
-      '--enable-features=NetworkService,NetworkServiceInProcess',
-      '--enable-logging',
-      '--font-render-hinting=none',
-      '--force-color-profile=srgb',
-      '--ignore-certificate-errors',
-      '--metrics-recording-only',
-      '--mute-audio',
-      '--no-default-browser-check',
-      '--no-first-run',
-      '--no-sandbox',
-      '--no-zygote',
-      '--password-store=basic',
-      '--use-gl=swiftshader',
-      '--use-mock-keychain',
-      '--window-size=1920x1080',
-      '--single-process'
-    ]
+      '--remote-debugging-port=9222'
+    ],
   });
+  
 
   const page = await browser.newPage();
   await page.goto('https://www.youtube.com', { waitUntil: 'networkidle2' });
@@ -105,6 +74,9 @@ async function loadCookies() {
  */
 async function createYtdlAgent() {
   const cookies = await loadCookies();
+
+  console.log(cookies);
+  
   return ytdl.createAgent(cookies);
 }
 
