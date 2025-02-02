@@ -287,41 +287,28 @@ function cleanDirectory(directory, exceptions = []) {
 }
 
 /**
- * Transcrit l’audio en sous-titres `.srt` avec Whisper, exécuté via Docker.
- * Le conteneur Whisper sera lancé avec les volumes nécessaires pour accéder au fichier audio
- * et écrire le fichier de sortie.
- *
- * @param {string} audioPath - Chemin absolu du fichier audio sur l'hôte.
- * @param {string} outputDir - Chemin absolu du dossier de sortie sur l'hôte.
- * @returns {Promise<string>} - Chemin du fichier `.srt` généré.
+ * Transcrit l’audio en sous-titres `.srt` avec Whisper
+ * @param {string} audioPath - Chemin du fichier audio.
+ * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`
+ * @returns {Promise<string>} - Chemin du fichier `.srt` généré
  */
 const generateSubtitles = (audioPath, outputDir) => {
   return new Promise((resolve, reject) => {
-    // On récupère le répertoire et le nom du fichier audio
-    const audioDir = path.dirname(audioPath);
-    const audioFileName = path.basename(audioPath);
-    // Chemin du fichier srt généré sur l'hôte
-    const hostSubtitlePath = path.join(
-      outputDir,
-      `${path.basename(audioPath, path.extname(audioPath))}.srt`
-    );
+    const subtitlePath = path.join(outputDir, `${path.basename(audioPath, path.extname(audioPath))}.srt`);
     
-    console.log('Transcription de l’audio avec Whisper via Docker...');
+    console.log('Transcription de l’audio avec Whisper...');
 
-    // Construction de la commande docker run :
-    // - Le répertoire audio est monté dans /audio dans le conteneur.
-    // - Le répertoire de sortie est monté dans /output dans le conteneur.
-    // - Le conteneur exécute la commande Whisper sur le fichier monté.
-    const command = `docker run --rm -v "${audioDir}":/audio -v "${outputDir}":/output whisper-cli /audio/${audioFileName} --model medium --language fr --output_format srt --output_dir /output`;
-
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Erreur lors de l'exécution de Whisper dans le conteneur: ${stderr}`);
-        return reject(error);
+    // Exécution de Whisper
+    exec(`whisper "${audioPath}" --model medium --language fr --output_format srt --output_dir "${outputDir}"`, 
+      (error, stdout, stderr) => {
+        if (error) {
+          console.error(`Erreur Whisper : ${stderr}`);
+          return reject(error);
+        }
+        console.log(`Sous-titres générés : ${subtitlePath}`);
+        resolve(subtitlePath);
       }
-      console.log(`Sous-titres générés : ${hostSubtitlePath}`);
-      resolve(hostSubtitlePath);
-    });
+    );
   });
 };
 
