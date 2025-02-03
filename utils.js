@@ -10,7 +10,7 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const cliProgress = require('cli-progress');
 const { exec } = require('child_process');
-const axios = require("axios");
+const FormData = require('form-data');
 
 
 
@@ -289,38 +289,57 @@ function cleanDirectory(directory, exceptions = []) {
 }
 
 /**
- * Transcrit l’audio en sous-titres `.srt` avec Whisper via l'API.
+ * Transcrit l’audio en sous-titres `.srt` avec Whisper
  * @param {string} audioPath - Chemin du fichier audio.
- * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`.
- * @returns {Promise<string>} - Chemin du fichier `.srt` généré.
+ * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`
+ * @returns {Promise<string>} - Chemin du fichier `.srt` généré
  */
-const generateSubtitles = async (audioPath, outputDir) => {
-  try {
-    console.log("📤 Envoi de l'audio à Whisper API pour transcription...");
+const generateSubtitles = (audioPath, outputDir) => {
+  return new Promise((resolve, reject) => {
+    const subtitlePath = path.join(outputDir, `${path.basename(audioPath, path.extname(audioPath))}.srt`);
+
+    console.log('Tentative de transcription de l’audio avec Whisper...');
+    console.log(`Fichier audio : ${audioPath}`);
+    console.log(`Dossier de sortie : ${outputDir}`);
 
     const formData = new FormData();
-    formData.append("file", fs.createReadStream(audioPath));
 
-    // Envoi de la requête POST vers l'API Whisper
-    const response = await axios.post("http://whisper-api:5005/transcribe", formData, {
-      headers: {
-        ...formData.getHeaders(),
-      },
-    });
-
-    if (!response.data.output_file) {
-      throw new Error("Aucun fichier de sous-titres généré.");
+    // Log pour vérifier si le fichier existe
+    console.log(`Vérification de l'existence du fichier audio...`);
+    if (fs.existsSync(audioPath)) {
+      formData.append('file', fs.createReadStream(audioPath));
+      console.log('Fichier ajouté à la requête.');
+    } else {
+      console.error('Fichier audio non trouvé : ', audioPath);
+      return reject('Fichier audio non trouvé');
     }
 
-    const subtitlePath = response.data.output_file;
-    console.log(`✅ Sous-titres générés : ${subtitlePath}`);
+    // Envoi de la requête POST avec le fichier audio via axios
+    console.log('Envoi de la requête à l\'API Whisper...');
+    axios.post('http://whisper-api:5005/transcribe', formData, {
+      headers: {
+        ...formData.getHeaders(),  // Ajoute les bons en-têtes pour le multipart/form-data
+        'Content-Type': 'multipart/form-data', // Ceci peut parfois être nécessaire
+      },
+    })
+      .then(response => {
+        console.log('Réponse de l\'API :', response.data);
 
-    return subtitlePath;
-  } catch (error) {
-    console.error(`❌ Erreur lors de la transcription : ${error.message}`);
-    throw error;
-  }
-};
+        // Vérifie si l'API a renvoyé une erreur
+        if (response.data.error) {
+          console.error(`Erreur dans la réponse de l'API : ${response.data.error}`);
+          return reject(response.data.error);
+        }
+
+        console.log(`Sous-titres générés avec succès : ${subtitlePath}`);
+        resolve(subtitlePath);
+      })
+      .catch(error => {
+        console.error('Erreur lors de l\'envoi de la requête à l\'API Whisper', error);
+        reject(error);
+      });
+  });
+}
 
 /**
  * Corrige les sous-titres `.srt` en les alignant avec le script original
