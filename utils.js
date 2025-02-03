@@ -10,6 +10,8 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const cliProgress = require('cli-progress');
 const { exec } = require('child_process');
+const axios = require("axios");
+
 
 
 /**
@@ -287,29 +289,37 @@ function cleanDirectory(directory, exceptions = []) {
 }
 
 /**
- * Transcrit l’audio en sous-titres `.srt` avec Whisper
+ * Transcrit l’audio en sous-titres `.srt` avec Whisper via l'API.
  * @param {string} audioPath - Chemin du fichier audio.
- * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`
- * @returns {Promise<string>} - Chemin du fichier `.srt` généré
+ * @param {string} outputDir - Dossier de sortie pour le fichier `.srt`.
+ * @returns {Promise<string>} - Chemin du fichier `.srt` généré.
  */
-const generateSubtitles = (audioPath, outputDir) => {
-  return new Promise((resolve, reject) => {
-    const subtitlePath = path.join(outputDir, `${path.basename(audioPath, path.extname(audioPath))}.srt`);
-    
-    console.log('Transcription de l’audio avec Whisper...');
+const generateSubtitles = async (audioPath, outputDir) => {
+  try {
+    console.log("📤 Envoi de l'audio à Whisper API pour transcription...");
 
-    // Exécution de Whisper
-    exec(`whisper "${audioPath}" --model medium --language fr --output_format srt --output_dir "${outputDir}"`, 
-      (error, stdout, stderr) => {
-        if (error) {
-          console.error(`Erreur Whisper : ${stderr}`);
-          return reject(error);
-        }
-        console.log(`Sous-titres générés : ${subtitlePath}`);
-        resolve(subtitlePath);
-      }
-    );
-  });
+    const formData = new FormData();
+    formData.append("file", fs.createReadStream(audioPath));
+
+    // Envoi de la requête POST vers l'API Whisper
+    const response = await axios.post("http://whisper-api:5005/transcribe", formData, {
+      headers: {
+        ...formData.getHeaders(),
+      },
+    });
+
+    if (!response.data.output_file) {
+      throw new Error("Aucun fichier de sous-titres généré.");
+    }
+
+    const subtitlePath = response.data.output_file;
+    console.log(`✅ Sous-titres générés : ${subtitlePath}`);
+
+    return subtitlePath;
+  } catch (error) {
+    console.error(`❌ Erreur lors de la transcription : ${error.message}`);
+    throw error;
+  }
 };
 
 /**
